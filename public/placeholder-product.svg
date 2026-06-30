@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <rect width="400" height="400" fill="#f1f5f9"/>
+  <rect x="120" y="130" width="160" height="140" rx="12" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
+  <circle cx="170" cy="175" r="18" fill="#cbd5e1"/>
+  <path d="M130 240 L190 190 L240 220 L270 200 L270 260 L130 260 Z" fill="#cbd5e1"/>
+  <text x="200" y="320" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" fill="#64748b">�r�n G�rseli</text>
+</svg>

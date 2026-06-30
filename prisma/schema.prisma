@@ -1,0 +1,432 @@
+// =============================================================================
+// PROFESYONEL E-TİCARET VERİTABANI ŞEMASI
+// =============================================================================
+// Bu şema iki ayrı dünyayı birbirine bağlar:
+//   1. Vitrin (Storefront) — müşterinin gördüğü mağaza
+//   2. Yönetim (Admin) — sadece sizin gördüğünüz panel
+// Ürünler, siparişler, faturalar hep burada yaşar; kod değil panel yönetir.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// YÖNETİCİ & KİMLİK
+// ---------------------------------------------------------------------------
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         AdminRole @default(OWNER)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+enum AdminRole {
+  OWNER
+  STAFF
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// SİTE AYARLARI & TASARIM (Panelden yönetilir — kod değil)
+// ---------------------------------------------------------------------------
+
+model SiteSettings {
+  id String @id @default("singleton")
+
+  // Genel
+  siteName        String  @default("Mağazam")
+  siteDescription String?
+  logoUrl         String?
+  faviconUrl      String?
+
+  // İletişim
+  contactEmail    String?
+  contactPhone    String?
+  contactAddress  String?
+  whatsappNumber  String?
+  workingHours    String?
+
+  // Sosyal medya
+  instagramUrl    String?
+  facebookUrl     String?
+  twitterUrl      String?
+  youtubeUrl      String?
+
+  // Tema / Tasarım (CSS değişkenleri olarak uygulanır)
+  primaryColor       String @default("#2563eb")
+  primaryForeground  String @default("#ffffff")
+  secondaryColor     String @default("#64748b")
+  accentColor        String @default("#f59e0b")
+  backgroundColor    String @default("#ffffff")
+  textColor          String @default("#0f172a")
+  fontHeading        String @default("Inter")
+  fontBody           String @default("Inter")
+  borderRadius       String @default("0.5rem")
+  heroTitle          String?
+  heroSubtitle       String?
+  heroImageUrl       String?
+  heroCtaText        String? @default("Alışverişe Başla")
+  footerText         String?
+
+  // Mağaza ayarları
+  currency           String  @default("TRY")
+  currencySymbol     String  @default("₺")
+  taxRate            Float   @default(20)
+  freeShippingMin    Float?
+  defaultShippingFee Float   @default(49.90)
+  maintenanceMode    Boolean @default(false)
+
+  // Ödeme yöntemleri aktif/pasif
+  enableCreditCard   Boolean @default(true)
+  enableBankTransfer Boolean @default(true)
+  enableCashOnDelivery Boolean @default(false)
+  enableIyzico       Boolean @default(true)
+  enableStripe       Boolean @default(false)
+
+  // e-Fatura otomatik oluşturma
+  autoGenerateInvoice Boolean @default(true)
+  invoicePrefix       String  @default("INV")
+  companyTitle        String?
+  companyTaxNumber    String?
+  companyTaxOffice    String?
+  companyAddress      String?
+  companyMersisNo     String?
+
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// ÜRÜN KATALOĞU
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  parentId    String?
+  parent      Category? @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  description     String?
+  shortDescription String?
+  sku             String?  @unique
+  barcode         String?
+
+  price           Float
+  compareAtPrice  Float?
+  costPrice       Float?
+
+  stockQuantity   Int      @default(0)
+  trackInventory  Boolean  @default(true)
+  allowBackorder  Boolean  @default(false)
+
+  weight          Float?
+  images          String   @default("[]") // JSON array of URLs
+
+  isActive        Boolean  @default(true)
+  isFeatured      Boolean  @default(false)
+  metaTitle       String?
+  metaDescription String?
+
+  categoryId      String?
+  category        Category? @relation(fields: [categoryId], references: [id])
+
+  orderItems      OrderItem[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// MÜŞTERİ & SİPARİŞ
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  phone     String?
+  firstName String
+  lastName  String
+
+  // e-Fatura için zorunlu alanlar (B2B veya kurumsal)
+  isCorporate     Boolean @default(false)
+  companyTitle    String?
+  taxNumber       String?
+  taxOffice       String?
+  identityNumber  String? // TC Kimlik (bireysel e-Arşiv)
+
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
+  status      OrderStatus @default(PENDING)
+
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+
+  // Teslimat adresi
+  shippingFirstName String
+  shippingLastName  String
+  shippingPhone     String
+  shippingAddress   String
+  shippingCity      String
+  shippingDistrict  String?
+  shippingPostalCode String?
+  shippingCountry   String @default("TR")
+
+  // Fatura adresi (farklı olabilir)
+  billingSameAsShipping Boolean @default(true)
+  billingFirstName      String?
+  billingLastName       String?
+  billingAddress        String?
+  billingCity           String?
+  billingTaxNumber      String?
+  billingTaxOffice      String?
+  billingCompanyTitle   String?
+
+  // Tutarlar
+  subtotal       Float
+  shippingCost   Float @default(0)
+  taxAmount      Float @default(0)
+  discountAmount Float @default(0)
+  totalAmount    Float
+
+  currency       String @default("TRY")
+  notes          String?
+
+  paymentMethod  PaymentMethod?
+  paymentStatus  PaymentStatus @default(PENDING)
+
+  items          OrderItem[]
+  payments       Payment[]
+  invoice        Invoice?
+  statusHistory  OrderStatusHistory[]
+
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  BANK_TRANSFER
+  CASH_ON_DELIVERY
+  IYZICO
+  STRIPE
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  productName  String
+  productSku   String?
+  productImage String?
+  unitPrice    Float
+  quantity     Int
+  taxRate      Float @default(20)
+  lineTotal    Float
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  note      String?
+  createdAt DateTime    @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// ÖDEME KAYITLARI
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  provider        String        // iyzico, stripe, manual
+  providerPaymentId String?
+  method          PaymentMethod
+  amount          Float
+  currency        String        @default("TRY")
+  status          PaymentStatus @default(PENDING)
+
+  cardLastFour    String?
+  cardBrand       String?
+  installment     Int?
+
+  rawResponse     String?       // JSON
+  failureReason   String?
+
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// e-FATURA / e-ARŞİV
+// ---------------------------------------------------------------------------
+
+model Invoice {
+  id            String        @id @default(cuid())
+  orderId       String        @unique
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  invoiceNumber String        @unique
+  invoiceType   InvoiceType   @default(E_ARSIV)
+  status        InvoiceStatus @default(DRAFT)
+
+  // GİB / entegratör referansları
+  provider          String?
+  providerInvoiceId String?
+  ettn              String?   // Elektronik Tebligat Takip Numarası
+  uuid              String?
+
+  subtotal    Float
+  taxAmount   Float
+  totalAmount Float
+
+  pdfUrl      String?
+  xmlUrl      String?
+
+  issuedAt    DateTime?
+  sentAt      DateTime?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum InvoiceType {
+  E_FATURA
+  E_ARSIV
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  ISSUED
+  SENT
+  FAILED
+  CANCELLED
+}
+
+// ---------------------------------------------------------------------------
+// SEPET (oturum bazlı — giriş gerektirmez)
+// ---------------------------------------------------------------------------
+
+model CartSession {
+  id        String     @id @default(cuid())
+  sessionId String     @unique
+  items     CartItem[]
+  expiresAt DateTime
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String      @id @default(cuid())
+  cartId    String
+  cart      CartSession @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  quantity  Int
+  createdAt DateTime    @default(now())
+
+  @@unique([cartId, productId])
+}
+
+// ---------------------------------------------------------------------------
+// İLETİŞİM FORMU MESAJLARI
+// ---------------------------------------------------------------------------
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String?
+  message   String
+  isRead    Boolean  @default(false)
+  repliedAt DateTime?
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// BANKA HESAP BİLGİLERİ (Havale/EFT için panelden yönetilir)
+// ---------------------------------------------------------------------------
+
+model BankAccount {
+  id            String  @id @default(cuid())
+  bankName      String
+  accountHolder String
+  iban          String
+  branchCode    String?
+  isActive      Boolean @default(true)
+  sortOrder     Int     @default(0)
+}
