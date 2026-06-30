@@ -13,6 +13,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+  // Vercel'in geçici dosya sisteminde çalışması için bu yol şart
   url      = env("DATABASE_URL")
 }
 
